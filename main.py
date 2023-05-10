@@ -1,14 +1,18 @@
-import os
 import collections
 import datetime
 import json
+import os
 import urllib.request
+from functools import cache
 from pathlib import Path
 
-from google.cloud import bigquery
 import jinja2
+from google.cloud import bigquery
+
+from rich import print  # TEMP
 
 PYPI_URL = "https://pypi.org/pypi/{name}/json"
+EOL_URL = "https://raw.githubusercontent.com/python/devguide/main/include/release-cycle.json"
 
 Status = collections.namedtuple(
     "Status", ("dying", "eol", "dev", "alpha", "beta", "rc"), defaults=(False,) * 6
@@ -68,6 +72,17 @@ def project_json(name):
     return json.loads(response.read())
 
 
+@cache
+def eol_json() -> dict:
+    print(f"Fetching {EOL_URL}")
+    response = urllib.request.urlopen(EOL_URL)
+    return json.loads(response.read())
+
+
+def version_status(version: str) -> str:
+    return eol_json()[version]["status"]
+
+
 def supports(major, classifiers, status):
     return (f"Programming Language :: Python :: {major}" in classifiers) != (
         status.eol or status.dying
@@ -76,13 +91,14 @@ def supports(major, classifiers, status):
 
 def fetch_top_projects():
     print("Fetching top projects")
-    projects = {
-        major: [
-            row["project"]
-            for row in bq_client.query(QUERY.format(major=major)).result()
-        ]
-        for major in ["2", "3"]
-    }
+    # projects = {
+    #     major: [
+    #         row["project"]
+    #         for row in bq_client.query(QUERY.format(major=major)).result()
+    #     ]
+    #     for major in ["2", "3"]
+    # }
+    projects = {'2': ['setuptools', 'botocore', 's3transfer', 'colorama', 'pip', 'urllib3', 'six', 'python-dateutil', 'requests', 'wheel'], '3': ['boto3', 'urllib3', 'requests', 'botocore', 'charset-normalizer', 'certifi', 'python-dateutil', 'idna', 's3transfer', 'six']}
     print(projects)
     print("Fetching top projects complete")
     return projects
@@ -107,6 +123,12 @@ def write_local_file(filename, contents, content_type="text/html"):
 
 
 if __name__ == "__main__":
+
+    print(version_status("2.7"))
+    print(version_status("3.7"))
+    print(version_status("3.11"))
+    print(version_status("3.12"))
+
     updated = datetime.datetime.now()
     projects = fetch_top_projects()
     classifiers = fetch_classifiers(set().union(*projects.values()))
@@ -117,6 +139,9 @@ if __name__ == "__main__":
             for name in projects[major[0]]
         ]
         print(major, status, results)
+        status = version_status(major)
+        print(major, status, results)
+        e
         do_support = sum(result[1] for result in results)
         write_local_file(
             f"{major}/index.html",
